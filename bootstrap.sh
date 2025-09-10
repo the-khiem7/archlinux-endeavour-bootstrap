@@ -84,71 +84,70 @@ if [[ "$IN_REPO_LOCAL" == "true" ]]; then
     "50-nvidia.sh::NVIDIA driver phase"
   )
 
-  # ===== Phase selection w/ optional dialog install =====
-  CHOSEN=()
+  # ====== HYBRID LOOP: checklist -> run -> ask to repeat ======
+  while :; do
+    CHOSEN=()
+    have_dialog() { command -v dialog >/dev/null 2>&1; }
 
-  have_dialog() { command -v dialog >/dev/null 2>&1; }
-
-  run_text_menu() {
-    echo
-    echo "dialog not installed -> using text menu"
-    echo "Phases:"
-    idx=1
-    for item in "${PHASES[@]}"; do
-      label="${item##*::}"
-      printf "  %d) %s\n" "$idx" "$label"
-      ((idx++))
-    done
-    echo
-    read -r -p "Chọn (vd: 1,3,5) | Enter = ALL: " PICK
-    if [[ -z "${PICK// }" ]]; then
-      CHOSEN=(1 2 3 4 5)
+    if have_dialog; then
+      # Hàm này ở bash/art.sh: fill CHOSEN hoặc exit nếu Cancel
+      run_dialog_menu
     else
-      IFS=',' read -r -a CHOSEN <<<"$PICK"
+      # Fallback text menu
+      echo
+      echo "dialog not installed -> using text menu"
+      echo "Phases:"
+      idx=1
+      for item in "${PHASES[@]}"; do
+        label="${item##*::}"
+        printf "  %d) %s\n" "$idx" "$label"
+        ((idx++))
+      done
+      echo
+      read -r -p "Chọn (vd: 1,3,5) | Enter = ALL | q = quit: " PICK
+      if [[ "$PICK" =~ ^[qQ]$ ]]; then
+        echo "[bootstrap] Quit."; exit 0
+      fi
+      if [[ -z "${PICK// }" ]]; then
+        CHOSEN=(1 2 3 4 5)
+      else
+        IFS=',' read -r -a CHOSEN <<<"$PICK"
+      fi
     fi
-  }
 
-  if have_dialog; then
-    run_dialog_menu
-  else
-    echo
-    echo "'dialog' is not installed."
-    read -r -p "Install 'dialog' now for nicer TUI? [Y/n]: " _ans
-    case "$_ans" in
-      [nN]*)
-        run_text_menu
-        ;;
-      *)
-        if x sudo pacman -S --needed --noconfirm dialog; then
-          run_dialog_menu
-        else
-          echo "[bootstrap] Failed to install 'dialog' -> falling back to text menu."
-          run_text_menu
-        fi
-        ;;
-    esac
-  fi
-  # ===== end phase selection =====
+    # Run selected phases
+    SORTED=($(printf "%s\n" "${CHOSEN[@]}" | sed 's/[^0-9]//g' | awk 'NF' | sort -n | uniq))
+    if ((${#SORTED[@]}==0)); then
+      echo "[bootstrap] Nothing selected. Exiting."
+      exit 0
+    fi
 
-  # === run selected phases ===
-  SORTED=($(printf "%s\n" "${CHOSEN[@]}" | sed 's/[^0-9]//g' | awk 'NF' | sort -n | uniq))
-  if ((${#SORTED[@]}==0)); then
-    echo "[bootstrap] Nothing selected. Exiting."
-    exit 0
-  fi
+    for n in "${SORTED[@]}"; do
+      i=$((n-1))
+      (( i>=0 && i<${#PHASES[@]} )) || { warn "Skip invalid index: $n"; continue; }
+      file="${PHASES[$i]%%::*}"
+      label="${PHASES[$i]##*::}"
+      print_step "[$n] $label"
+      bash "${SCRIPT_DIR}/setup/${file}"
+      ok "Done: $label"
+    done
 
-  for n in "${SORTED[@]}"; do
-    i=$((n-1))
-    (( i>=0 && i<${#PHASES[@]} )) || { warn "Skip invalid index: $n"; continue; }
-    file="${PHASES[$i]%%::*}"
-    label="${PHASES[$i]##*::}"
-    print_step "[$n] $label"
-    bash "${SCRIPT_DIR}/setup/${file}"
-    ok "Done: $label"
+    print_done "All selected phases finished."
+
+    # Ask to run again
+    if command -v dialog >/dev/null 2>&1; then
+      dialog --title "TheKhiem7" --yesno "Finished selected phases.\nRun again to pick more?" 8 52
+      resp=$?; clear
+      [[ $resp -eq 0 ]] && continue || break
+    else
+      read -r -p "Run again to pick more? [y/N]: " more
+      [[ "$more" =~ ^[yY] ]] && continue || break
+    fi
   done
 
-  print_done "All selected phases finished."
   exit 0
+  # ====== END HYBRID LOOP ======
+  
 fi
 
 # =========================
