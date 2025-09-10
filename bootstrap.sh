@@ -1,33 +1,17 @@
 #!/usr/bin/env bash
-# Smart bootstrap: chạy được cả online (clone về) *và* local (TUI) trong 1 file.
 set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/bash/theme.sh"
-
-# Parse args để chọn theme
-THEME="default"
-for arg in "$@"; do
-  case "$arg" in
-    --theme=*) THEME="${arg#*=}" ;;
-    --theme) shift; THEME="${1:-default}" ;;
-  esac
-done
-
-apply_theme "$THEME"
 
 ME="-->online-setup<--"
-# Nhớ sửa đúng repo bạn nhé:
-REMOTE_REPO="the-khiem7/archlinux-endeavour-bootstrap"   # ví dụ: user/repo
+REMOTE_REPO="the-khiem7/archlinux-endeavour-bootstrap"   # đổi nếu cần
 BRANCH="main"
 INSTALL_DIR="${HOME}/.cache/${REMOTE_REPO##*/}"
 
-SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 IN_REPO_LOCAL="false"
 [[ -d "${SCRIPT_DIR}/setup" && -f "${SCRIPT_DIR}/bash/lib.sh" ]] && IN_REPO_LOCAL="true"
 
 have() { command -v "$1" >/dev/null 2>&1; }
-
 try() { "$@" || sleep 0; }
 x() {
   if "$@"; then cmdstatus=0; else cmdstatus=1; fi
@@ -67,10 +51,11 @@ ensure_git() {
 }
 
 # =========================
-# LOCAL MODE (trong repo) – chạy TUI phase, KHÔNG clone
+# LOCAL MODE – chạy TUI phase, KHÔNG clone
 # =========================
 if [[ "$IN_REPO_LOCAL" == "true" && "${BOOTSTRAP_ONLINE:-}" != "1" ]]; then
-  # TUI local (giữ code TUI ngắn gọn; bạn đã có các file trong setup/ & bash/lib.sh)
+  # lib chung
+  # shellcheck disable=SC1091
   source "${SCRIPT_DIR}/bash/lib.sh"
 
   print_title "Bootstrap (LOCAL MODE)"
@@ -84,24 +69,40 @@ if [[ "$IN_REPO_LOCAL" == "true" && "${BOOTSTRAP_ONLINE:-}" != "1" ]]; then
     "50-nvidia.sh::NVIDIA driver phase"
   )
 
-  # Nếu có dialog dùng checklist, không thì fallback
+  # TUI chọn phase (fallback text nếu dialog fail/cancel)
+  USE_TEXT_FALLBACK=0
   if command -v dialog >/dev/null 2>&1; then
     TMP_OUT="$(mktemp)"; trap 'rm -f "$TMP_OUT"' EXIT
     CHECK_ARGS=(); idx=1
     for item in "${PHASES[@]}"; do
       label="${item##*::}"
       CHECK_ARGS+=("$idx" "$label" "off"); ((idx++))
-done
-    dialog --separate-output --checklist "Select phases (SPACE to toggle, ENTER to confirm):" 20 80 10 \
-      "${CHECK_ARGS[@]}" 2> "$TMP_OUT" || { warn "Cancelled."; exit 1; }
-    mapfile -t CHOSEN < "$TMP_OUT"
-    if ((${#CHOSEN[@]}==0)); then
-      ask_yes_no "No phase selected. Run ALL phases?" && CHOSEN=(1 2 3 4 5) || { warn "Nothing to do."; exit 0; }
+    done
+
+    if dialog --separate-output --checklist \
+        "Select phases (SPACE to toggle, ENTER to confirm):" 20 80 10 \
+        "${CHECK_ARGS[@]}" 2> "$TMP_OUT"
+    then
+      mapfile -t CHOSEN < "$TMP_OUT"
+      if ((${#CHOSEN[@]}==0)); then
+        read -r -p "No selection. Run ALL phases? [y/N]: " ans
+        [[ "$ans" =~ ^[yY](es)?$ ]] && CHOSEN=(1 2 3 4 5) || USE_TEXT_FALLBACK=1
+      fi
+    else
+      echo "[bootstrap] dialog canceled/failed → fallback to text menu."
+      USE_TEXT_FALLBACK=1
     fi
   else
+    USE_TEXT_FALLBACK=1
+  fi
+
+  if [[ "$USE_TEXT_FALLBACK" == "1" ]]; then
     echo; echo "Phases:"; idx=1
-    for item in "${PHASES[@]}"; do label="${item##*::}"; printf "  %d) %s\n" "$idx" "$label"; ((idx++)); done
-    echo; read -r -p "Chọn (vd: 1,3,5) | Enter = ALL: " PICK
+    for item in "${PHASES[@]}"; do
+      label="${item##*::}"; printf "  %d) %s\n" "$idx" "$label"; ((idx++))
+    done
+    echo
+    read -r -p "Chọn (vd: 1,3,5) | Enter = ALL: " PICK
     if [[ -z "${PICK// }" ]]; then CHOSEN=(1 2 3 4 5); else IFS=',' read -r -a CHOSEN <<<"$PICK"; fi
   fi
 
@@ -113,6 +114,7 @@ done
     bash "${SCRIPT_DIR}/setup/${file}"
     ok "Done: $label"
   done
+
   print_done "All selected phases finished."
   exit 0
 fi
@@ -122,7 +124,7 @@ fi
 # =========================
 arch_guard
 
-# Chặn case bạn quên đổi placeholder
+# Chặn placeholder
 if [[ "$REMOTE_REPO" == *"<YOUR_USER>"* || "$REMOTE_REPO" == *"<YOUR_REPO>"* ]]; then
   echo "$ME: Please set REMOTE_REPO correctly (user/repo). Current: '$REMOTE_REPO'"
   exit 1
@@ -160,9 +162,5 @@ echo "$ME: Downloaded."
 chmod +x "${INSTALL_DIR}/bootstrap.sh" 2>/dev/null || true
 
 echo "$ME: Running local bootstrap ..."
-# Đặt cờ để nhánh LOCAL biết là từ online (tránh tự clone nữa)
 export BOOTSTRAP_ONLINE=1
-# Pass-through flags nếu bạn muốn:
-# export DRY_RUN=${DRY_RUN:-false}
-# export NO_CONFIRM=${NO_CONFIRM:-false}
 exec "${INSTALL_DIR}/bootstrap.sh" "$@"
