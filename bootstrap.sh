@@ -2,6 +2,20 @@
 # Smart bootstrap: chạy được cả online (clone về) *và* local (TUI) trong 1 file.
 set -Eeuo pipefail
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/bash/theme.sh"
+
+# Parse args để chọn theme
+THEME="default"
+for arg in "$@"; do
+  case "$arg" in
+    --theme=*) THEME="${arg#*=}" ;;
+    --theme) shift; THEME="${1:-default}" ;;
+  esac
+done
+
+apply_theme "$THEME"
+
 ME="-->online-setup<--"
 # Nhớ sửa đúng repo bạn nhé:
 REMOTE_REPO="the-khiem7/archlinux-endeavour-bootstrap"   # ví dụ: user/repo
