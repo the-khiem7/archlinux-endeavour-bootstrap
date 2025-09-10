@@ -1,7 +1,20 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
+# Resolve SCRIPT_DIR even when the script comes from a pipe (curl | bash)
+get_script_dir() {
+  local src="${BASH_SOURCE[0]-}"
+  if [[ -n "$src" && -e "$src" ]]; then
+    cd -- "$(dirname -- "$src")" && pwd
+  else
+    # Running from a pipe: no on-disk script path → use current directory
+    pwd
+  fi
+}
+SCRIPT_DIR="$(get_script_dir)"
+
 
 ME="-->online-setup<--"
 REMOTE_REPO="the-khiem7/archlinux-endeavour-bootstrap"   # đổi nếu cần
