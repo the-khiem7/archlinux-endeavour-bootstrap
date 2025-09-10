@@ -89,8 +89,6 @@ if [[ "$IN_REPO_LOCAL" == "true" ]]; then
 
   have_dialog() { command -v dialog >/dev/null 2>&1; }
 
-  run_dialog_menu
-
   run_text_menu() {
     echo
     echo "dialog not installed -> using text menu"
