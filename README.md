@@ -14,9 +14,7 @@ bash -c 't=$(mktemp) && wget -qO "$t" https://raw.githubusercontent.com/the-khie
 
 The above will download the bootstrap script and clone the repo into:
 
-```
 ~/.cache/archlinux-endeavour-bootstrap
-```
 
 To make that somewhere else, specify a path as another argument:
 
