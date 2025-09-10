@@ -55,6 +55,7 @@ ensure_git() {
 if [[ "$IN_REPO_LOCAL" == "true" ]]; then
   # shellcheck disable=SC1091
   source "${SCRIPT_DIR}/bash/lib.sh"
+  source "${SCRIPT_DIR}/bash/art.sh"
 
   print_title "Bootstrap (LOCAL MODE)"
   notice "DRY_RUN=${DRY_RUN:-false} | NO_CONFIRM=${NO_CONFIRM:-false}"
@@ -72,29 +73,7 @@ if [[ "$IN_REPO_LOCAL" == "true" ]]; then
 
   have_dialog() { command -v dialog >/dev/null 2>&1; }
 
-  run_dialog_menu() {
-    TMP_OUT="$(mktemp)"; trap 'rm -f "$TMP_OUT"' EXIT
-    CHECK_ARGS=(); idx=1
-    for item in "${PHASES[@]}"; do
-      label="${item##*::}"
-      CHECK_ARGS+=("$idx" "$label" "off"); ((idx++))
-    done
-
-    if dialog --separate-output --checklist \
-         "Select phases (SPACE to toggle, ENTER to confirm):" 20 80 10 \
-         "${CHECK_ARGS[@]}" 2> "$TMP_OUT"
-    then
-      mapfile -t CHOSEN < "$TMP_OUT"
-      # Không tick gì => xem như cancel -> thoát êm
-      if ((${#CHOSEN[@]}==0)); then
-        echo "[bootstrap] No selection. Exiting."
-        exit 0
-      fi
-    else
-      echo "[bootstrap] Cancelled."
-      exit 0
-    fi
-  }
+  run_dialog_menu
 
   run_text_menu() {
     echo
