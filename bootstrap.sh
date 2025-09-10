@@ -136,7 +136,7 @@ if [[ "$IN_REPO_LOCAL" == "true" ]]; then
 
     # Ask to run again
     if command -v dialog >/dev/null 2>&1; then
-      dialog --title "TheKhiem7" --yesno "Finished selected phases.\nRun again to pick more?" 8 52
+      dialog --title "Archlinux Endeavour Bootstrap by TheKhiem7" --yesno "Finished selected phases.\nRun again to pick more?" 8 52
       resp=$?; clear
       [[ $resp -eq 0 ]] && continue || break
     else

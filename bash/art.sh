@@ -47,14 +47,21 @@ EOF
     CHECK_ARGS+=("$idx" "$label" "off"); ((idx++))
   done
 
-  # 5) Gọi dialog với size tính được + giữ khoảng trắng
-  if dialog --no-collapse --title "TheKhiem7" --backtitle "Endeavour EndoSetup" \
-       --separate-output --checklist "$MSG" "$height" "$width" "$list_h" \
-       "${CHECK_ARGS[@]}" 2> "$TMP_OUT"
+  # 5) dialog: force output to stdout and capture it
+  if dialog --no-collapse \
+            --title "Archlinux Endeavour Bootstrap by TheKhiem7" --backtitle "https://github.com/the-khiem7/archlinux-endeavour-bootstrap" \
+            --output-fd 1 \
+            --separate-output --checklist "$MSG" "$height" "$width" "$list_h" \
+            "${CHECK_ARGS[@]}" >"$TMP_OUT" 2>/dev/null
   then
     mapfile -t CHOSEN < "$TMP_OUT"
-    (( ${#CHOSEN[@]} == 0 )) && { echo "[bootstrap] No selection. Exiting."; exit 0; }
+    echo "[debug] chosen: ${CHOSEN[*]}" >&2
+    if ((${#CHOSEN[@]}==0)); then
+      echo "[bootstrap] No selection. Exiting."
+      exit 0
+    fi
   else
-    echo "[bootstrap] Cancelled."; exit 0
+    echo "[bootstrap] Cancelled."
+    exit 0
   fi
 }
