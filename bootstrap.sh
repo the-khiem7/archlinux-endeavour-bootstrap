@@ -8,6 +8,7 @@ REMOTE_REPO="the-khiem7/archlinux-endeavour-bootstrap"   # đổi nếu cần
 BRANCH="main"
 INSTALL_DIR="${HOME}/.cache/${REMOTE_REPO##*/}"
 
+# Xác định đang trong repo (LOCAL MODE)
 IN_REPO_LOCAL="false"
 [[ -d "${SCRIPT_DIR}/setup" && -f "${SCRIPT_DIR}/bash/lib.sh" ]] && IN_REPO_LOCAL="true"
 
@@ -35,14 +36,12 @@ x() {
 arch_guard() {
   have pacman || { echo "\"pacman\" not found. Arch(-based) only. Aborting..."; exit 1; }
 }
-
 ensure_net_tools() {
   if ! have curl && ! have wget; then
     echo -e "\e[33m$ME: curl/wget not found → installing curl\e[0m"
     x sudo pacman -S --needed --noconfirm curl
   fi
 }
-
 ensure_git() {
   if ! have git; then
     echo -e "\e[33m$ME: git not found → installing git & base-devel\e[0m"
@@ -53,8 +52,7 @@ ensure_git() {
 # =========================
 # LOCAL MODE – chạy TUI phase, KHÔNG clone
 # =========================
-if [[ "$IN_REPO_LOCAL" == "true" && "${BOOTSTRAP_ONLINE:-}" != "1" ]]; then
-  # lib chung
+if [[ "$IN_REPO_LOCAL" == "true" ]]; then
   # shellcheck disable=SC1091
   source "${SCRIPT_DIR}/bash/lib.sh"
 
@@ -69,9 +67,12 @@ if [[ "$IN_REPO_LOCAL" == "true" && "${BOOTSTRAP_ONLINE:-}" != "1" ]]; then
     "50-nvidia.sh::NVIDIA driver phase"
   )
 
-  # TUI chọn phase (fallback text nếu dialog fail/cancel)
-  USE_TEXT_FALLBACK=0
-  if command -v dialog >/dev/null 2>&1; then
+  # ===== Phase selection w/ optional dialog install =====
+  CHOSEN=()
+
+  have_dialog() { command -v dialog >/dev/null 2>&1; }
+
+  run_dialog_menu() {
     TMP_OUT="$(mktemp)"; trap 'rm -f "$TMP_OUT"' EXIT
     CHECK_ARGS=(); idx=1
     for item in "${PHASES[@]}"; do
@@ -80,36 +81,74 @@ if [[ "$IN_REPO_LOCAL" == "true" && "${BOOTSTRAP_ONLINE:-}" != "1" ]]; then
     done
 
     if dialog --separate-output --checklist \
-        "Select phases (SPACE to toggle, ENTER to confirm):" 20 80 10 \
-        "${CHECK_ARGS[@]}" 2> "$TMP_OUT"
+         "Select phases (SPACE to toggle, ENTER to confirm):" 20 80 10 \
+         "${CHECK_ARGS[@]}" 2> "$TMP_OUT"
     then
       mapfile -t CHOSEN < "$TMP_OUT"
+      # Không tick gì => xem như cancel -> thoát êm
       if ((${#CHOSEN[@]}==0)); then
-        read -r -p "No selection. Run ALL phases? [y/N]: " ans
-        [[ "$ans" =~ ^[yY](es)?$ ]] && CHOSEN=(1 2 3 4 5) || USE_TEXT_FALLBACK=1
+        echo "[bootstrap] No selection. Exiting."
+        exit 0
       fi
     else
-      echo "[bootstrap] dialog canceled/failed → fallback to text menu."
-      USE_TEXT_FALLBACK=1
+      echo "[bootstrap] Cancelled."
+      exit 0
     fi
-  else
-    USE_TEXT_FALLBACK=1
-  fi
+  }
 
-  if [[ "$USE_TEXT_FALLBACK" == "1" ]]; then
-    echo; echo "Phases:"; idx=1
+  run_text_menu() {
+    echo
+    echo "dialog not installed -> using text menu"
+    echo "Phases:"
+    idx=1
     for item in "${PHASES[@]}"; do
-      label="${item##*::}"; printf "  %d) %s\n" "$idx" "$label"; ((idx++))
+      label="${item##*::}"
+      printf "  %d) %s\n" "$idx" "$label"
+      ((idx++))
     done
     echo
     read -r -p "Chọn (vd: 1,3,5) | Enter = ALL: " PICK
-    if [[ -z "${PICK// }" ]]; then CHOSEN=(1 2 3 4 5); else IFS=',' read -r -a CHOSEN <<<"$PICK"; fi
+    if [[ -z "${PICK// }" ]]; then
+      CHOSEN=(1 2 3 4 5)
+    else
+      IFS=',' read -r -a CHOSEN <<<"$PICK"
+    fi
+  }
+
+  if have_dialog; then
+    run_dialog_menu
+  else
+    echo
+    echo "'dialog' is not installed."
+    read -r -p "Install 'dialog' now for nicer TUI? [Y/n]: " _ans
+    case "$_ans" in
+      [nN]*)
+        run_text_menu
+        ;;
+      *)
+        if x sudo pacman -S --needed --noconfirm dialog; then
+          run_dialog_menu
+        else
+          echo "[bootstrap] Failed to install 'dialog' -> falling back to text menu."
+          run_text_menu
+        fi
+        ;;
+    esac
+  fi
+  # ===== end phase selection =====
+
+  # === run selected phases ===
+  SORTED=($(printf "%s\n" "${CHOSEN[@]}" | sed 's/[^0-9]//g' | awk 'NF' | sort -n | uniq))
+  if ((${#SORTED[@]}==0)); then
+    echo "[bootstrap] Nothing selected. Exiting."
+    exit 0
   fi
 
-  SORTED=($(printf "%s\n" "${CHOSEN[@]}" | sed 's/[^0-9]//g' | awk 'NF' | sort -n | uniq))
   for n in "${SORTED[@]}"; do
-    i=$((n-1)); (( i>=0 && i<${#PHASES[@]} )) || { warn "Skip invalid index: $n"; continue; }
-    file="${PHASES[$i]%%::*}"; label="${PHASES[$i]##*::}"
+    i=$((n-1))
+    (( i>=0 && i<${#PHASES[@]} )) || { warn "Skip invalid index: $n"; continue; }
+    file="${PHASES[$i]%%::*}"
+    label="${PHASES[$i]##*::}"
     print_step "[$n] $label"
     bash "${SCRIPT_DIR}/setup/${file}"
     ok "Done: $label"
@@ -123,8 +162,6 @@ fi
 # ONLINE MODE – clone repo rồi exec lại (local)
 # =========================
 arch_guard
-
-# Chặn placeholder
 if [[ "$REMOTE_REPO" == *"<YOUR_USER>"* || "$REMOTE_REPO" == *"<YOUR_REPO>"* ]]; then
   echo "$ME: Please set REMOTE_REPO correctly (user/repo). Current: '$REMOTE_REPO'"
   exit 1
@@ -158,9 +195,7 @@ x git checkout -B "$BRANCH" "origin/$BRANCH"
 x git submodule update --init --recursive
 echo "$ME: Downloaded."
 
-# đảm bảo file thực thi
 chmod +x "${INSTALL_DIR}/bootstrap.sh" 2>/dev/null || true
 
 echo "$ME: Running local bootstrap ..."
-export BOOTSTRAP_ONLINE=1
 exec "${INSTALL_DIR}/bootstrap.sh" "$@"
