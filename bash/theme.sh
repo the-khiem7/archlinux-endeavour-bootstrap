@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
-# theme.sh - module quản lý theme cho dialog
+set -Eeuo pipefail
 
-THEME_FILE="$(mktemp)"
-trap 'rm -f "$THEME_FILE"' EXIT
+# Tạo file theme tạm và auto dọn khi shell kết thúc
+THEME_FILE="$(mktemp -t dialog-theme.XXXXXX)"
+_theme_cleanup() { rm -f "$THEME_FILE" 2>/dev/null || true; }
+trap _theme_cleanup EXIT
 
-set_theme() {
-  local style="${1:-default}"
-  case "$style" in
+_write_theme() {
+  # $1 = style
+  case "${1:-default}" in
     default)
       cat >"$THEME_FILE" <<'EOF'
 use_shadow = no
@@ -24,7 +26,7 @@ button_key_inactive_color = (YELLOW,BLACK,ON)
 checkbox_color = (CYAN,BLACK,OFF)
 checkbox_selected_color = (BLACK,CYAN,ON)
 EOF
-    ;;
+      ;;
     dracula)
       cat >"$THEME_FILE" <<'EOF'
 use_shadow = no
@@ -42,7 +44,7 @@ button_key_inactive_color = (YELLOW,BLACK,ON)
 checkbox_color = (CYAN,BLACK,OFF)
 checkbox_selected_color = (BLACK,CYAN,ON)
 EOF
-    ;;
+      ;;
     solarized-dark)
       cat >"$THEME_FILE" <<'EOF'
 use_shadow = no
@@ -60,7 +62,7 @@ button_key_inactive_color = (YELLOW,BLACK,ON)
 checkbox_color = (CYAN,BLACK,OFF)
 checkbox_selected_color = (BLACK,CYAN,ON)
 EOF
-    ;;
+      ;;
     light)
       cat >"$THEME_FILE" <<'EOF'
 use_shadow = no
@@ -78,17 +80,30 @@ button_key_inactive_color = (YELLOW,WHITE,ON)
 checkbox_color = (BLUE,WHITE,OFF)
 checkbox_selected_color = (WHITE,BLUE,ON)
 EOF
-    ;;
+      ;;
     *)
-      echo "[theme] Unknown theme: $style → fallback default"
-      set_theme default
+      echo "[theme] Unknown theme: $1 → fallback default" >&2
+      _write_theme default
       return
-    ;;
+      ;;
   esac
 }
 
-apply_theme() {
-  local chosen="${1:-default}"
-  set_theme "$chosen"
+# Test nhanh dialog với theme; nếu fail thì bỏ theme
+_apply_theme_safely() {
   export DIALOGRC="$THEME_FILE"
+  # Test hộp nhỏ; nếu dialog trả về ≠0 thì xem như theme lỗi
+  if ! dialog --backtitle "Theme check" --msgbox "Theme loaded OK" 6 30 2>/dev/null; then
+    echo "[theme] dialog failed with current theme. Disabling theme." >&2
+    unset DIALOGRC
+    return 1
+  fi
+  return 0
+}
+
+# API ngoài:
+apply_theme() {
+  local style="${1:-default}"
+  _write_theme "$style"
+  _apply_theme_safely || true
 }
