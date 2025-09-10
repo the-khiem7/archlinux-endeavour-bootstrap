@@ -1,7 +1,7 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- `bootstrap.sh` — single entrypoint. Runs locally (TUI/CLI) or clones this repo to `~/.cache/Endeavour-EndoSetup` and re-executes.
+- `bootstrap.sh` — single entrypoint. Runs locally (TUI/CLI) or clones this repo to `~/.cache/archlinux-endeavour-bootstrap` and re-executes.
 - `bash/lib.sh` — shared helpers for UI, prompts, idempotent ops (`run`, `ensure_pkg`, `append_once`, service helpers).
 - `setup/*.sh` — ordered phases executed independently or via the TUI. Naming pattern: `NN-name.sh` (e.g., `10-network.sh`, `50-nvidia.sh`).
 
