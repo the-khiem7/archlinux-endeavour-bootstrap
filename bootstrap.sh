@@ -12,6 +12,22 @@ INSTALL_DIR="${HOME}/.cache/${REMOTE_REPO##*/}"
 IN_REPO_LOCAL="false"
 [[ -d "${SCRIPT_DIR}/setup" && -f "${SCRIPT_DIR}/bash/lib.sh" ]] && IN_REPO_LOCAL="true"
 
+safe_clean_dir() {
+  local dir="$1"
+  # CHỐT AN TOÀN: chỉ cho phép xoá nếu nằm trong $HOME/.cache và đúng tên dự án
+  case "$dir" in
+    "$HOME/.cache/"*"/archlinux-endeavour-bootstrap") ;;
+    "$HOME/.cache/archlinux-endeavour-bootstrap") ;;
+    *) echo "[bootstrap] Refuse to clean suspicious path: $dir"; return 1 ;;
+  esac
+
+  # Không xoá chính $HOME/.cache, chỉ xoá bên trong thư mục đích
+  if [[ -d "$dir" ]]; then
+    rm -rf -- "$dir"/* "$dir"/.[!.]* "$dir"/..?* 2>/dev/null || true
+  fi
+}
+
+
 have() { command -v "$1" >/dev/null 2>&1; }
 try() { "$@" || sleep 0; }
 x() {
@@ -151,23 +167,27 @@ ensure_git
 
 echo "$ME: Downloading repo to $INSTALL_DIR ..."
 x mkdir -p "$INSTALL_DIR"
-x rm -rf "${INSTALL_DIR}/.git" || true
 x cd "$INSTALL_DIR"
 
-if [ -z "$(ls -A 2>/dev/null || true)" ]; then
-  x git init -b "$BRANCH"
-  x git remote add origin "https://github.com/${REMOTE_REPO}"
-else
-  if [ ! -d .git ]; then
-    echo "Dir \"$INSTALL_DIR\" is not empty and not a git repo. Aborting..."
-    exit 1
-  fi
+if [ -d .git ]; then
+  # đã là git repo
   git remote get-url origin >/dev/null 2>&1 || x git remote add origin "https://github.com/${REMOTE_REPO}"
   if ! git remote get-url origin | grep -q "$REMOTE_REPO"; then
-    echo "Dir \"$INSTALL_DIR\" is a git repo but not $REMOTE_REPO. Aborting..."
-    exit 1
+    echo "[bootstrap] Repo remote khác -> clean và re-init."
+    x safe_clean_dir "$INSTALL_DIR"
+    x git init -b "$BRANCH"
+    x git remote add origin "https://github.com/${REMOTE_REPO}"
   fi
+else
+  # chưa là git repo -> nếu có rác thì dọn rồi init
+  if [ -n "$(ls -A 2>/dev/null || true)" ]; then
+    echo "[bootstrap] $INSTALL_DIR not a git repo → cleaning up."
+    x safe_clean_dir "$INSTALL_DIR"
+  fi
+  x git init -b "$BRANCH"
+  x git remote add origin "https://github.com/${REMOTE_REPO}"
 fi
+
 
 x git fetch origin "$BRANCH" --depth=1
 x git checkout -B "$BRANCH" "origin/$BRANCH"
